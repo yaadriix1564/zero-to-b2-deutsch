@@ -1,12 +1,143 @@
-const RESOURCES_URL='src/data/resources.json';let allData=null;let activeTab='a1';
-async function loadResources(){try{const r=await fetch(RESOURCES_URL);allData=await r.json();renderLevel(activeTab);renderTools(allData.tools);}catch(e){console.error('Erreur chargement ressources',e);}}
-function renderLevel(levelId){const container=document.getElementById('levels-container');if(!allData)return;const level=allData.levels.find(l=>l.id===levelId);if(!level){container.innerHTML='<div class="empty-state">Niveau introuvable.</div>';return;}container.innerHTML='';level.resources.forEach(r=>{const card=document.createElement('div');card.className='resource-card';const header=document.createElement('div');header.className='resource-header';const badge=document.createElement('span');badge.className='resource-type-badge';badge.textContent=r.type;const titleWrap=document.createElement('div');const title=document.createElement('div');title.className='resource-title';title.textContent=r.title;const provider=document.createElement('div');provider.className='resource-provider';provider.textContent=r.provider;titleWrap.appendChild(title);titleWrap.appendChild(provider);header.appendChild(badge);header.appendChild(titleWrap);const usage=document.createElement('div');usage.className='resource-usage';usage.textContent=r.usage;const links=document.createElement('div');links.className='resource-links';(r.links||[]).forEach(l=>{const a=document.createElement('a');a.className='resource-link';a.href=l.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=l.label;links.appendChild(a);});card.appendChild(header);card.appendChild(usage);if(r.links&&r.links.length)card.appendChild(links);container.appendChild(card);});}
-function renderTools(tools){const container=document.getElementById('tools-container');if(!tools)return;container.innerHTML='';tools.forEach(t=>{const card=document.createElement('div');card.className='tool-card';card.innerHTML=`<div class="tool-card-title">${t.title}</div><div class="tool-card-usage">${t.usage}</div><a class="tool-card-link" href="${t.url}" target="_blank" rel="noopener">Ouvrir &rarr;</a>`;container.appendChild(card);});}
-function initTabs(){document.querySelectorAll('.tab-btn').forEach(btn=>{btn.addEventListener('click',()=>{document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');activeTab=btn.dataset.tab;renderLevel(activeTab);});});}
-const STORAGE_KEY='deutsch-b2-sessions';
-function getSessions(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||[];}catch{return[];}}
-function saveSessions(s){localStorage.setItem(STORAGE_KEY,JSON.stringify(s));}
-function renderTracker(){const sessions=getSessions();const log=document.getElementById('tracker-log');const stats=document.getElementById('tracker-stats');log.innerHTML='';if(sessions.length===0){log.innerHTML='<div class="empty-state">Aucune session enregistree. Commence a etudier !</div>';}else{sessions.slice().reverse().forEach((s,i)=>{const item=document.createElement('div');item.className='log-item';const realIdx=sessions.length-1-i;item.innerHTML=`<div class="log-item-left"><span class="log-badge">${s.level.toUpperCase()}</span><span class="log-resource">${s.resource}</span></div><div style="display:flex;align-items:center;gap:.75rem"><span class="log-duration">${s.minutes} min</span><button class="log-delete" data-idx="${realIdx}" title="Supprimer">&times;</button></div>`;log.appendChild(item);});log.querySelectorAll('.log-delete').forEach(btn=>{btn.addEventListener('click',()=>{const s=getSessions();s.splice(Number(btn.dataset.idx),1);saveSessions(s);renderTracker();});});}
-const totalMin=sessions.reduce((a,s)=>a+Number(s.minutes),0);const totalH=Math.floor(totalMin/60);const restMin=totalMin%60;const byLevel={a1:0,a2:0,b1:0,b2:0};sessions.forEach(s=>{if(byLevel[s.level]!==undefined)byLevel[s.level]+=Number(s.minutes);});stats.innerHTML=`<div class="tracker-stat-card"><div class="tracker-stat-number">${sessions.length}</div><div class="tracker-stat-label">Sessions</div></div><div class="tracker-stat-card"><div class="tracker-stat-number">${totalH}h${restMin>0?restMin+'m':''}</div><div class="tracker-stat-label">Total</div></div><div class="tracker-stat-card"><div class="tracker-stat-number">${byLevel.a1+byLevel.a2} min</div><div class="tracker-stat-label">A1+A2</div></div><div class="tracker-stat-card"><div class="tracker-stat-number">${byLevel.b1+byLevel.b2} min</div><div class="tracker-stat-label">B1+B2</div></div>`;}
-function initTracker(){const addBtn=document.getElementById('track-add');addBtn.addEventListener('click',()=>{const level=document.getElementById('track-level').value;const resource=document.getElementById('track-resource').value.trim();const minutes=Number(document.getElementById('track-minutes').value);if(!resource||!minutes||minutes<1){alert('Remplis tous les champs correctement.');return;}const sessions=getSessions();sessions.push({level,resource,minutes,date:new Date().toISOString()});saveSessions(sessions);document.getElementById('track-resource').value='';document.getElementById('track-minutes').value='';renderTracker();});renderTracker();}
-document.addEventListener('DOMContentLoaded',()=>{loadResources();initTabs();initTracker();});
+// Supabase configuration
+const SUPABASE_URL = 'https://cbspzktlhfxusyksfkvp.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNic3B6a3RsaGZ4dXN5a3Nma3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NTE4NzcsImV4cCI6MjA5NjMyNzg3N30.TotXJefvwWoqg7O4UFqGqWt2fSVpS9CZsT3LND4ofQ0';
+
+let allData = null;
+let activeTab = 'A1';
+const STORAGE_KEY = 'deutsch-b2-sessions';
+
+async function fetchFromSupabase() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/resources?select=*&order=level.asc,title.asc`, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!res.ok) throw new Error('Supabase fetch failed');
+    return await res.json();
+  } catch (e) {
+    console.warn('Supabase unavailable, falling back to local JSON', e);
+    return null;
+  }
+}
+
+async function loadResources() {
+  try {
+    // Try Supabase first
+    const supabaseData = await fetchFromSupabase();
+    if (supabaseData && supabaseData.length > 0) {
+      // Group by level
+      const levels = [...new Set(supabaseData.map(r => r.level))].sort();
+      allData = {
+        levels: levels.map(lvl => ({
+          id: lvl,
+          label: lvl,
+          tools: supabaseData.filter(r => r.level === lvl).map(r => ({
+            name: r.title,
+            description: r.description,
+            url: r.url,
+            type: r.type,
+            category: r.category,
+            free: r.is_free,
+            tags: r.tags || []
+          }))
+        })),
+        tools: []
+      };
+    } else {
+      // Fallback to local JSON
+      const r = await fetch('src/data/resources.json');
+      allData = await r.json();
+    }
+    renderLevel(activeTab);
+    renderTools(allData.tools);
+  } catch(e) {
+    console.error('Error loading resources:', e);
+  }
+}
+
+function renderLevel(levelId) {
+  const container = document.getElementById('levels-container');
+  if (!allData) return;
+  const level = allData.levels.find(l => l.id === levelId);
+  if (!level) return;
+  container.innerHTML = '';
+  level.tools.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'resource-card';
+    const typeIcon = t.type === 'video' ? '🎬' : t.type === 'audio' ? '🎧' : t.type === 'app' ? '📱' : t.type === 'book' ? '📚' : t.type === 'exam' ? '📝' : '🌐';
+    const freeTag = t.free ? '<span class="tag free">Gratuit</span>' : '<span class="tag paid">Payant</span>';
+    card.innerHTML = `
+      <div class="card-header">
+        <span class="card-icon">${typeIcon}</span>
+        <h3>${t.name}</h3>
+        ${freeTag}
+      </div>
+      <p>${t.description || ''}</p>
+      <div class="card-tags">${(t.tags||[]).map(tag=>`<span class="tag">${tag}</span>`).join('')}</div>
+      ${t.url ? `<a href="${t.url}" target="_blank" rel="noopener" class="btn-link">Acceder &rarr;</a>` : ''}
+    `;
+    container.appendChild(card);
+  });
+}
+
+function renderTools(tools) {
+  const container = document.getElementById('tools-container');
+  if (!tools) return;
+  container.innerHTML = '';
+  tools.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'resource-card';
+    card.innerHTML = `<h3>${t.name}</h3><p>${t.description||''}</p>${t.url?`<a href="${t.url}" target="_blank" class="btn-link">Voir &rarr;</a>`:''}` ;
+    container.appendChild(card);
+  });
+}
+
+function initTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTab = btn.dataset.level;
+      renderLevel(activeTab);
+    });
+  });
+}
+
+function getSessions() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; }
+}
+
+function saveSessions(s) { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+
+function renderTracker() {
+  const sessions = getSessions();
+  const log = document.getElementById('tracker-log');
+  const stats = document.getElementById('tracker-stats');
+  const totalMin = sessions.reduce((a,s) => a + Number(s.minutes), 0);
+  const totalH = Math.floor(totalMin/60);
+  const restMin = totalMin%60;
+  const byLevel = {A1:0,A2:0,B1:0,B2:0};
+  sessions.forEach(s => { if(byLevel[s.level]!==undefined) byLevel[s.level]+=Number(s.minutes); });
+  if(stats) stats.innerHTML = `<strong>Total: ${totalH}h${restMin}min</strong> | ${Object.entries(byLevel).map(([k,v])=>`${k}: ${Math.floor(v/60)}h${v%60}min`).join(' | ')}`;
+  if(log) log.innerHTML = sessions.slice(-10).reverse().map(s => `<div class="session-entry"><span class="session-level">${s.level}</span> ${s.minutes} min - ${s.activity} <small>${s.date}</small></div>`).join('');
+}
+
+function initTracker() {
+  const addBtn = document.getElementById('track-add');
+  if (!addBtn) return;
+  addBtn.addEventListener('click', () => {
+    const level = document.getElementById('track-level')?.value || 'A1';
+    const minutes = document.getElementById('track-minutes')?.value || 30;
+    const activity = document.getElementById('track-activity')?.value || 'Etude';
+    const sessions = getSessions();
+    sessions.push({ level, minutes, activity, date: new Date().toLocaleDateString('fr-FR') });
+    saveSessions(sessions);
+    renderTracker();
+  });
+  renderTracker();
+}
+
+document.addEventListener('DOMContentLoaded', () => { loadResources(); initTabs(); initTracker(); });
