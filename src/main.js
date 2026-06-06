@@ -3,7 +3,7 @@ const SUPABASE_URL = 'https://cbspzktlhfxusyksfkvp.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNic3B6a3RsaGZ4dXN5a3Nma3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NTE4NzcsImV4cCI6MjA5NjMyNzg3N30.TotXJefvwWoqg7O4UFqGqWt2fSVpS9CZsT3LND4ofQ0';
 
 let allData = null;
-let activeTab = 'A1';
+let activeTab = 'a1';
 const STORAGE_KEY = 'deutsch-b2-sessions';
 
 async function fetchFromSupabase() {
@@ -25,16 +25,14 @@ async function fetchFromSupabase() {
 
 async function loadResources() {
   try {
-    // Try Supabase first
     const supabaseData = await fetchFromSupabase();
     if (supabaseData && supabaseData.length > 0) {
-      // Group by level
-      const levels = [...new Set(supabaseData.map(r => r.level))].sort();
+      const levels = [...new Set(supabaseData.map(r => r.level.toLowerCase()))].sort();
       allData = {
         levels: levels.map(lvl => ({
           id: lvl,
-          label: lvl,
-          tools: supabaseData.filter(r => r.level === lvl).map(r => ({
+          label: lvl.toUpperCase(),
+          tools: supabaseData.filter(r => r.level.toLowerCase() === lvl).map(r => ({
             name: r.title,
             description: r.description,
             url: r.url,
@@ -47,7 +45,6 @@ async function loadResources() {
         tools: []
       };
     } else {
-      // Fallback to local JSON
       const r = await fetch('src/data/resources.json');
       allData = await r.json();
     }
@@ -85,7 +82,7 @@ function renderLevel(levelId) {
 
 function renderTools(tools) {
   const container = document.getElementById('tools-container');
-  if (!tools) return;
+  if (!tools || !container) return;
   container.innerHTML = '';
   tools.forEach(t => {
     const card = document.createElement('div');
@@ -100,7 +97,7 @@ function initTabs() {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      activeTab = btn.dataset.level;
+      activeTab = btn.dataset.tab || btn.dataset.level || 'a1';
       renderLevel(activeTab);
     });
   });
@@ -119,17 +116,17 @@ function renderTracker() {
   const totalMin = sessions.reduce((a,s) => a + Number(s.minutes), 0);
   const totalH = Math.floor(totalMin/60);
   const restMin = totalMin%60;
-  const byLevel = {A1:0,A2:0,B1:0,B2:0};
-  sessions.forEach(s => { if(byLevel[s.level]!==undefined) byLevel[s.level]+=Number(s.minutes); });
-  if(stats) stats.innerHTML = `<strong>Total: ${totalH}h${restMin}min</strong> | ${Object.entries(byLevel).map(([k,v])=>`${k}: ${Math.floor(v/60)}h${v%60}min`).join(' | ')}`;
-  if(log) log.innerHTML = sessions.slice(-10).reverse().map(s => `<div class="session-entry"><span class="session-level">${s.level}</span> ${s.minutes} min - ${s.activity} <small>${s.date}</small></div>`).join('');
+  const byLevel = {a1:0,a2:0,b1:0,b2:0};
+  sessions.forEach(s => { const k=s.level.toLowerCase(); if(byLevel[k]!==undefined) byLevel[k]+=Number(s.minutes); });
+  if(stats) stats.innerHTML = `<strong>Total: ${totalH}h${restMin}min</strong> | ${Object.entries(byLevel).map(([k,v])=>`${k.toUpperCase()}: ${Math.floor(v/60)}h${v%60}min`).join(' | ')}`;
+  if(log) log.innerHTML = sessions.slice(-10).reverse().map(s => `<div class="session-entry"><span class="session-level">${s.level.toUpperCase()}</span> ${s.minutes} min - ${s.activity} <small>${s.date}</small></div>`).join('');
 }
 
 function initTracker() {
   const addBtn = document.getElementById('track-add');
   if (!addBtn) return;
   addBtn.addEventListener('click', () => {
-    const level = document.getElementById('track-level')?.value || 'A1';
+    const level = document.getElementById('track-level')?.value || 'a1';
     const minutes = document.getElementById('track-minutes')?.value || 30;
     const activity = document.getElementById('track-activity')?.value || 'Etude';
     const sessions = getSessions();
